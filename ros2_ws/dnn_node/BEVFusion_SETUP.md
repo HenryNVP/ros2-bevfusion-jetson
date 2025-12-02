@@ -34,6 +34,11 @@ source /opt/ros/humble/install/setup.bash
 cd /home/student/ros2/ros2_ws
 ```
 
+Install torch from wheel
+```bash
+wget https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.4.0a0+07cecf4168.nv24.05.14710581-cp310-cp310-linux_aarch64.whl -O torch-2.4.0-cp310-cp310-linux_aarch64.whl
+pip3 install torch-2.4.0-cp310-cp310-linux_aarch64.whl --index-url https://pypi.org/simple
+```
 ---
 
 ## 2. Build CUDA-BEVFusion as a Library
@@ -339,7 +344,9 @@ The `covariance` field is a 6×6 matrix (stored as 36 values) representing uncer
 
 ### 9.1 CUDA Kernel Errors (Expected Behavior)
 
-**You will see `cudaErrorNoKernelImageForDevice [209]` logs** due to the `libspconv.so` library not matching the Orin's SM 8.7 architecture exactly. This is **normal and expected**.
+**You will see `cudaErrorNoKernelImageForDevice [209]` logs** because the **pre-built** `libspconv.so` library doesn't include SM 8.7 kernels, even though libspconv **does support** SM 8.7 on Embedded Platform (as stated in CUDA-CenterPoint README).
+
+**Note:** The library *can* support SM 8.7, but the pre-built binary in `libspconv/lib/aarch64_cuda12.8/` was built without SM 8.7 kernels.
 
 - **Impact:** The model falls back to a compatible kernel and runs successfully
 - **Behavior:** Detections are still published correctly
@@ -374,7 +381,7 @@ Due to the kernel mismatch, detection scores are lower than usual:
 
 ### 11.1 CUDA Kernel Compatibility
 
-The pre-built `libspconv.so` in `libspconv/lib/aarch64_cuda12.8/` was not built with SM 8.7 (Jetson Orin) kernels. This causes:
+**Important:** According to the CUDA-CenterPoint README, `libspconv` **does support SM 8.7 on Embedded Platform** (Jetson Orin). However, the **pre-built** `libspconv.so` in `libspconv/lib/aarch64_cuda12.8/` was not built with SM 8.7 kernels included. This causes:
 
 - CUDA runtime errors: `cudaErrorNoKernelImageForDevice [209]` (see section 9.1)
 - Degraded performance: confidence scores typically 0.01-0.07 instead of 0.25+
@@ -382,7 +389,14 @@ The pre-built `libspconv.so` in `libspconv/lib/aarch64_cuda12.8/` was not built 
 
 **Workaround:** The model still runs and publishes detections. The node uses a threshold of 0.01 to capture these detections.
 
-**Proper Fix:** Rebuild `libspconv.so` from source with SM 8.7 support (requires finding the spconv source repository).
+**Proper Fix:** Rebuild `libspconv.so` from source with SM 8.7 support. However, **`libspconv.so` is a pre-built binary library** - the source code is not included in this repository. The Makefile in `3DSparseConvolution/` only builds test programs that link against the pre-built library; it does not rebuild `libspconv.so` itself.
+
+**To get SM 8.7 support, you need to:**
+1. Check for an updated pre-built version from NVIDIA/repository maintainers
+2. Contact NVIDIA support to request a version built with SM 8.7 kernels
+3. Find the source repository (if available) and build it yourself
+
+See `BUILD_LIBSPCONV.md` for more details.
 
 ### 11.2 Calibration Mismatch
 
