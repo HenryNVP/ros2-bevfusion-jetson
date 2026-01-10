@@ -1,0 +1,71 @@
+# Build artifacts
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+*.log
+
+# Data files
+data/
+*.db3
+*.mp4
+*.avi
+*.mov
+*.npy
+*.tensor
+rosbag2_*/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.python-version
+
+# External dependencies (will be cloned or mounted)
+Lidar_AI_Solution/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+.directory
+
+# Documentation (keep README.md for reference)
+*.md
+!README.md
+
+# Docker files (don't copy into image)
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Build scripts (not needed in image)
+build_docker*.sh
+*.sh
+!env.sh
+
+# Results and outputs
+results/
+output/
+visualizations/
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
