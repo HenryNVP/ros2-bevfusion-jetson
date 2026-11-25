@@ -25,13 +25,16 @@ grep -q "Node Ready" "$LOGS/bev_node.log" || { echo "bev_node failed to start"; 
 sleep 2
 "$BIN/replay_node" --ros-args -p publish_rate:=$RATE > "$LOGS/replay.log" 2>&1 & REPLAY=$!
 
-echo "[$LABEL] replaying..."
+UDP0=$(awk '/^Udp:/{getline; print $6}' /proc/net/snmp)
+echo "[$LABEL] replaying... (CYCLONEDDS_URI=${CYCLONEDDS_URI:-default})"
 while ! grep -q "End of sequence" "$LOGS/replay.log"; do
   kill -0 $REPLAY 2>/dev/null || { echo "replay died"; tail "$LOGS/replay.log"; exit 1; }
   sleep 2
 done
 sleep 8   # drain in-flight frames
 kill -INT $LOGGER; wait $LOGGER 2>/dev/null
+UDP1=$(awk '/^Udp:/{getline; print $6}' /proc/net/snmp)
+echo "UDP receive-buffer errors during run: $((UDP1-UDP0))"
 DIR=$(grep -o "Benchmark logs -> .*" "$LOGS/logger.log" | sed 's/Benchmark logs -> //')
 echo "[$LABEL] results in $DIR"
 cat "$DIR/summary.json"

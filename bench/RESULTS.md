@@ -48,9 +48,32 @@ Peak RSS: bev_node 5.6 GB, replay 0.2 GB, logger 0.05 GB.
    because it processes ~7× fewer points. Accuracy of the ROS path is not yet representative.
 5. Free win: bev_node uses FP16 sparse conv; INT8 is 11% faster at equal accuracy.
 
+## 3. Optimization 1 — DDS socket buffer (fixes frame drops)
+
+**Root cause of finding 1:** each 4.3 MB image is fragmented into thousands of UDP datagrams;
+the kernel receive buffer was capped at 208 KB (`net.core.rmem_max`), so bursts overflowed it.
+One lost fragment discards the image, and the 7-way sync discards the frame. Confirmed with the
+kernel `RcvbufErrors` counter (`/proc/net/snmp`), now recorded per run by `run_ros_e2e.sh`.
+
+**Fix:** `sysctl net.core.rmem_max=2147483647` + CycloneDDS `SocketReceiveBufferSize min=64MB`
+(`bench/cyclonedds.xml`, enabled with `BENCH_DDS_TUNED=1`).
+
+| Config | Rate | UDP rcvbuf errors | Received | Drop rate | Throughput | E2E p50 / p99 | Peak RAM |
+|---|---|---|---|---|---|---|---|
+| Baseline | 1 Hz | (not yet counted) | 202/404 | 50% | 0.51 FPS | 192 / 244 ms | 7.1 GB |
+| rmem_max raised only | 1 Hz | 9,170 | 287/404 | 29% | 0.72 FPS | 184 / 219 ms | 6.5 GB |
+| **+ Cyclone 64 MB buffer** | 1 Hz | **0** | **404/404** | **0%** | 1.00 FPS | 185 / 214 ms | **4.4 GB** |
+| Baseline | max | — | 215/404 | 47% | 1.59 FPS | 182 / 214 ms | 7.0 GB |
+| **+ Cyclone 64 MB buffer** | max | **0** | **404/404** | **0%** | **3.13 FPS** | 186 / 260 ms | **4.5 GB** |
+
+- Frame loss 50% → 0%; delivered throughput ~2× (now equal to the offered rate, i.e. replay-bound);
+  peak RAM −2.6 GB (no backlog of partially received samples).
+- Persist across reboots: `echo 'net.core.rmem_max=2147483647' | sudo tee /etc/sysctl.d/60-dds.conf`.
+
 ## Next (optimizations, each re-measured with the same scripts)
 
-- Fix drops: reliable QoS / shared-memory transport or intra-process composition; shrink queues.
+- ~~Fix drops~~ (done above). Remaining transport cost: ~42 ms stamp→callback for 26 MB/frame;
+  candidates: shared-memory transport, compressed/smaller images, single-process pipeline.
 - Per-frame calibration + 10-sweep accumulation in the ROS path; score ROS output with the harness eval.
 - Switch LiDAR backbone to INT8.
 - Faster replay (preloaded / threaded decode) so the source isn't the ceiling.

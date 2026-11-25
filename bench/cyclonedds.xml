@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Large socket receive buffer so multi-MB images (fragmented into thousands of
+     UDP datagrams) are not dropped. Requires net.core.rmem_max >= this value. -->
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain id="any">
+    <Internal>
+      <SocketReceiveBufferSize min="64MB"/>
+    </Internal>
+  </Domain>
+</CycloneDDS>
