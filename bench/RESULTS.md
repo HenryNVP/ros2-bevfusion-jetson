@@ -75,8 +75,7 @@ export CYCLONEDDS_URI=file:///workspace/bench/cyclonedds.xml   # 64 MB SocketRec
 ## Demo
 
 `bench/render_demo.py` renders a run's logged detections (6 cameras + LiDAR BEV, with the run's
-measured metrics). INT8 1 Hz run, scene-0103 (40 frames):
-`logs/bevfusion_detections/20261125_034719_int8_1hz/demo_scene-0103.mp4`
+measured metrics). INT8 1 Hz run, scene-0103 (40 frames): [docs/demo.mp4](../docs/demo.mp4)
 
 ## Reproduce (inside the container)
 

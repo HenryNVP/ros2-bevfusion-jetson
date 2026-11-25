@@ -60,3 +60,4 @@ Thumbs.db
 bench/results*/
 bench/ros_logs/
 logs/
+!docs/demo.mp4
