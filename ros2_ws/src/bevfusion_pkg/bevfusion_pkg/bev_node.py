@@ -237,7 +237,12 @@ class BEVFusionNode(Node):
         """
         img_msgs = msgs[:6]
         lidar_msg = msgs[6]
-        
+
+        # Time from frame stamp to callback start: transport + sync + queueing.
+        stamp = lidar_msg.header.stamp
+        stamp_s = stamp.sec + stamp.nanosec * 1e-9
+        wait_ms = (self.get_clock().now().nanoseconds * 1e-9 - stamp_s) * 1000
+
         try:
             # 1. Prepare Inputs (with timing)
             prep_start = time.perf_counter()
@@ -267,14 +272,18 @@ class BEVFusionNode(Node):
                 f"Processed frame: Inference={inf_time:.1f}ms, Total={total_time:.1f}ms, FPS={fps:.1f}"
             )
             
-            # Publish metrics: [prep_time_ms, inference_time_ms, publish_time_ms, total_time_ms, fps]
+            # Publish metrics: [prep_time_ms, inference_time_ms, publish_time_ms,
+            #                   total_time_ms, fps, wait_ms, stamp_sec, stamp_nanosec]
+            # wait_ms = stamp -> callback start; stamp sec/nanosec (exact in
+            # float64) join metrics to frames.
             metrics_msg = Float64MultiArray()
             metrics_msg.layout = MultiArrayLayout()
             metrics_msg.layout.dim = [MultiArrayDimension()]
             metrics_msg.layout.dim[0].label = "metrics"
-            metrics_msg.layout.dim[0].size = 5
-            metrics_msg.layout.dim[0].stride = 5
-            metrics_msg.data = [prep_time, inf_time, pub_time, total_time, fps]
+            metrics_msg.layout.dim[0].size = 8
+            metrics_msg.layout.dim[0].stride = 8
+            metrics_msg.data = [prep_time, inf_time, pub_time, total_time, fps,
+                                wait_ms, float(stamp.sec), float(stamp.nanosec)]
             metrics_msg.layout.data_offset = 0
             self.metrics_pub.publish(metrics_msg)
             

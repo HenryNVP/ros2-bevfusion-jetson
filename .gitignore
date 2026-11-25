@@ -55,3 +55,8 @@ Thumbs.db
 .idea/
 
 
+
+# Benchmark raw outputs
+bench/results*/
+bench/ros_logs/
+logs/
