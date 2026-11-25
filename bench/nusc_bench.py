@@ -174,6 +174,8 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="debug: first N samples")
     ap.add_argument("--out", default="/workspace/bench/results")
     ap.add_argument("--no-eval", action="store_true")
+    ap.add_argument("--power-seconds", type=float, default=30,
+                    help="continuous-inference pass for power/GPU sampling (0=off)")
     args = ap.parse_args()
 
     import libpybev
@@ -226,6 +228,34 @@ def main():
                                                 s["token"], eval_cfg)
         print(f"[{tag}] pass {r + 1}/{args.repeats} done", flush=True)
 
+    # Power pass: back-to-back inference on cached frames, sampled by sysmon.
+    system = None
+    if args.power_seconds > 0:
+        import subprocess
+        here = os.path.dirname(os.path.abspath(__file__))
+        sys.path.insert(0, here)
+        import sysmon
+        cached = [build_inputs(nusc, s) for s in samples[:10]]
+        csv_path = os.path.join(out_dir, "sysmon_power_pass.csv")
+        mon = subprocess.Popen([sys.executable, os.path.join(here, "sysmon.py"),
+                                "record", csv_path, "0.2"])
+        time.sleep(1.0)
+        t0, n, plat = time.time(), 0, []
+        while time.time() - t0 < args.power_seconds:
+            imgs, pts, calib, _ = cached[n % len(cached)]
+            core.update(*calib)
+            t = time.perf_counter()
+            core.forward(imgs, pts, with_normalization=True)
+            plat.append((time.perf_counter() - t) * 1000)
+            n += 1
+        t1 = time.time()
+        mon.terminate()
+        mon.wait()
+        fps = n / (t1 - t0)
+        system = sysmon.summarize(csv_path, fps, t0, t1)
+        system.update({"power_pass_seconds": t1 - t0, "power_pass_fps": fps})
+        del cached
+
     summary = {
         "model": args.model, "lidar_precision": args.precision,
         "split": args.split, "num_samples": len(samples),
@@ -235,6 +265,7 @@ def main():
                        "min": float(np.min(lat))},
         "fps_p50": 1000.0 / pct(lat, 50),
         "avg_points": float(np.mean(npts)),
+        "system": system,
     }
     res_path = os.path.join(out_dir, "results_nusc.json")
     with open(res_path, "w") as f:

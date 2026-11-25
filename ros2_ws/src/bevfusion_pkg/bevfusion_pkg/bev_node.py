@@ -91,8 +91,12 @@ class BEVFusionNode(Node):
         # Initialize pre-allocated image buffers for zero-copy processing
         self._init_buffers()
         
-        # Model configuration
-        model_variant = "resnet50int8"
+        # Model configuration: model/<variant>/build engines; lidar sparse-conv precision
+        self.declare_parameter("model_variant", "resnet50int8")
+        self.declare_parameter("lidar_precision", "fp16")
+        model_variant = self.get_parameter("model_variant").value
+        lidar_precision = self.get_parameter("lidar_precision").value
+        self.get_logger().info(f"Model: {model_variant}, lidar precision: {lidar_precision}")
         model_root = os.path.join(REPO_ROOT, "model", model_variant, "build")
 
         # Load calibration data from example-data directory
@@ -109,7 +113,7 @@ class BEVFusionNode(Node):
             os.path.join(REPO_ROOT, "model", model_variant, "lidar.backbone.xyz.onnx"),
             os.path.join(model_root, "fuser.plan"),
             os.path.join(model_root, "head.bbox.plan"),
-            "fp16"
+            lidar_precision
         )
         
         if self.core is None:
