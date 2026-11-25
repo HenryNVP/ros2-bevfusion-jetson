@@ -6,6 +6,7 @@ import cv2
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image, PointCloud2, PointField
+from std_msgs.msg import Header
 from cv_bridge import CvBridge
 
 # Resolve workspace root and NuScenes data location
@@ -54,7 +55,13 @@ class ReplayNode(Node):
             self.pubs[topic] = self.create_publisher(Image, topic, 50)
         
         self.lidar_pub = self.create_publisher(PointCloud2, "/lidar_top/points", 50)
-        
+
+        # Lightweight per-frame marker for benchmarking: stamp = frame stamp,
+        # frame_id = nuScenes sample_token. Lets the logger count frames sent
+        # (drop rate) and map detections back to samples (accuracy scoring).
+        self.frame_pub = self.create_publisher(Header, "/replay/frame", 50)
+        self.frames_sent = 0
+
         # Parameters
         self.declare_parameter("publish_rate", 5)  # Hz (frames per second)
         
@@ -179,14 +186,26 @@ class ReplayNode(Node):
             self.frame_idx += 1
             return
 
+        # Stamp right before publishing so disk I/O / JPEG decode in this node
+        # is not counted as end-to-end latency (a real sensor driver has
+        # the frame in memory at capture time).
+        timestamp = self.get_clock().now().to_msg()
+        pc_msg.header.stamp = timestamp
+        for _, msg in img_msgs:
+            msg.header.stamp = timestamp
+
         # Publish all messages with identical timestamp for synchronization
-        if pc_msg is not None:
-            self.lidar_pub.publish(pc_msg)
-        
+        self.lidar_pub.publish(pc_msg)
         for topic, msg in img_msgs:
             self.pubs[topic].publish(msg)
 
-        self.get_logger().info(f"Published frame {self.frame_idx}")
+        marker = Header()
+        marker.stamp = timestamp
+        marker.frame_id = frame["sample_token"]
+        self.frame_pub.publish(marker)
+        self.frames_sent += 1
+
+        self.get_logger().info(f"Published frame {self.frame_idx} (sent={self.frames_sent})")
         self.frame_idx += 1
 
     def create_cloud(self, points, timestamp):

@@ -91,8 +91,12 @@ class BEVFusionNode(Node):
         # Initialize pre-allocated image buffers for zero-copy processing
         self._init_buffers()
         
-        # Model configuration
-        model_variant = "resnet50int8"
+        # Model configuration: model/<variant>/build engines; lidar sparse-conv precision
+        self.declare_parameter("model_variant", "resnet50int8")
+        self.declare_parameter("lidar_precision", "fp16")
+        model_variant = self.get_parameter("model_variant").value
+        lidar_precision = self.get_parameter("lidar_precision").value
+        self.get_logger().info(f"Model: {model_variant}, lidar precision: {lidar_precision}")
         model_root = os.path.join(REPO_ROOT, "model", model_variant, "build")
 
         # Load calibration data from example-data directory
@@ -109,7 +113,7 @@ class BEVFusionNode(Node):
             os.path.join(REPO_ROOT, "model", model_variant, "lidar.backbone.xyz.onnx"),
             os.path.join(model_root, "fuser.plan"),
             os.path.join(model_root, "head.bbox.plan"),
-            "fp16"
+            lidar_precision
         )
         
         if self.core is None:
@@ -237,7 +241,12 @@ class BEVFusionNode(Node):
         """
         img_msgs = msgs[:6]
         lidar_msg = msgs[6]
-        
+
+        # Time from frame stamp to callback start: transport + sync + queueing.
+        stamp = lidar_msg.header.stamp
+        stamp_s = stamp.sec + stamp.nanosec * 1e-9
+        wait_ms = (self.get_clock().now().nanoseconds * 1e-9 - stamp_s) * 1000
+
         try:
             # 1. Prepare Inputs (with timing)
             prep_start = time.perf_counter()
@@ -267,14 +276,18 @@ class BEVFusionNode(Node):
                 f"Processed frame: Inference={inf_time:.1f}ms, Total={total_time:.1f}ms, FPS={fps:.1f}"
             )
             
-            # Publish metrics: [prep_time_ms, inference_time_ms, publish_time_ms, total_time_ms, fps]
+            # Publish metrics: [prep_time_ms, inference_time_ms, publish_time_ms,
+            #                   total_time_ms, fps, wait_ms, stamp_sec, stamp_nanosec]
+            # wait_ms = stamp -> callback start; stamp sec/nanosec (exact in
+            # float64) join metrics to frames.
             metrics_msg = Float64MultiArray()
             metrics_msg.layout = MultiArrayLayout()
             metrics_msg.layout.dim = [MultiArrayDimension()]
             metrics_msg.layout.dim[0].label = "metrics"
-            metrics_msg.layout.dim[0].size = 5
-            metrics_msg.layout.dim[0].stride = 5
-            metrics_msg.data = [prep_time, inf_time, pub_time, total_time, fps]
+            metrics_msg.layout.dim[0].size = 8
+            metrics_msg.layout.dim[0].stride = 8
+            metrics_msg.data = [prep_time, inf_time, pub_time, total_time, fps,
+                                wait_ms, float(stamp.sec), float(stamp.nanosec)]
             metrics_msg.layout.data_offset = 0
             self.metrics_pub.publish(metrics_msg)
             
